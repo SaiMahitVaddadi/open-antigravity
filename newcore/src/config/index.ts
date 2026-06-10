@@ -20,7 +20,9 @@ export const ConfigSchema = z.object({
   anthropicApiKey: z.string().optional(),
   geminiApiKey: z.string().optional(),
   ollamaBaseUrl: z.string().default('http://localhost:11434'),
-  defaultModel: z.string().default('mock'),
+  litellmBaseUrl: z.string().default('http://localhost:4000'),
+  litellmApiKey: z.string().default('sk-litemagic-123'),
+  defaultModel: z.string().default('groq-llama-8b'),
 
   // Workspace
   workspaceRoot: z.string().default('./workspaces'),
@@ -87,6 +89,8 @@ export function loadConfig(overrides?: Partial<Config>): Config {
     anthropicApiKey: envVars.ANTHROPIC_API_KEY || undefined,
     geminiApiKey: envVars.GEMINI_API_KEY || undefined,
     ollamaBaseUrl: envVars.OLLAMA_BASE_URL || undefined,
+    litellmBaseUrl: envVars.LITELLM_BASE_URL || undefined,
+    litellmApiKey: envVars.LITELLM_API_KEY || undefined,
     defaultModel: envVars.DEFAULT_MODEL || undefined,
     workspaceRoot: envVars.WORKSPACE_ROOT || undefined,
     artifactsDir: envVars.ARTIFACTS_DIR || undefined,

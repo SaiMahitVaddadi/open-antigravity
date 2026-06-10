@@ -48,6 +48,8 @@ Penpot tools (drive a live Penpot design via the Antigravity Bridge plugin and t
 PENPOT PARADIGM: Prefer markup ops (set_markup / patch_markup) for structural changes — adding shapes,
 restructuring layout, multi-shape edits. Use mutate_shape only for targeted prop tweaks on one known
 shape. Always call high_level_overview first when orienting in an unfamiliar file.
+
+When the task mentions Penpot or design, prefer the penpot.* tools over generic file tools.
 `;
 
 export class Agent extends EventEmitter {

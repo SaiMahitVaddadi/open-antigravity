@@ -16,6 +16,8 @@ import { GeminiProvider } from './providers/gemini.js';
 import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { OllamaProvider } from './providers/ollama.js';
+import { LitellmProvider } from './providers/litellm.js';
+import { ClaudeCliProvider } from './providers/claude-cli.js';
 
 export class ModelGateway {
   private providers = new Map<string, ModelProvider>();
@@ -32,6 +34,24 @@ export class ModelGateway {
     // Mock provider is always available (no API key needed)
     this.registerProvider(new MockProvider());
 
+    // LiteLLM gateway — covers 100+ models behind one OpenAI-compatible API.
+    // Hydrate model list in the background; if the gateway is down we still
+    // register the provider so isAvailable() can answer false later.
+    if (config.litellmBaseUrl) {
+      const litellm = new LitellmProvider(config.litellmBaseUrl, config.litellmApiKey);
+      this.registerProvider(litellm);
+      // Best-effort hydration; re-register so model→provider mapping picks up the ids.
+      litellm.hydrateModels()
+        .then(() => {
+          for (const m of litellm.models) this.modelToProvider.set(m.id, litellm.name);
+        })
+        .catch((e) => console.error('LiteLLM hydrate failed:', e));
+    }
+
+    // Claude CLI — uses the local `claude` binary's OAuth; no API key needed.
+    // Marks itself unavailable if the binary isn't on PATH.
+    this.registerProvider(new ClaudeCliProvider());
+
     // Register real providers based on available API keys
     if (config.geminiApiKey) {
       this.registerProvider(new GeminiProvider(config.geminiApiKey));
@@ -46,8 +66,9 @@ export class ModelGateway {
     // Ollama is always registered (may or may not be running)
     this.registerProvider(new OllamaProvider(config.ollamaBaseUrl));
 
-    // Build fallback chain: prefer real providers, fall back to mock
-    this.fallbackChain = ['gemini', 'openai', 'anthropic', 'ollama', 'mock'];
+    // Build fallback chain: prefer the gateway and CLI before per-vendor SDKs,
+    // and only fall through to the mock as a last resort.
+    this.fallbackChain = ['litellm', 'claude-cli', 'gemini', 'openai', 'anthropic', 'ollama', 'mock'];
   }
 
   registerProvider(provider: ModelProvider): void {
