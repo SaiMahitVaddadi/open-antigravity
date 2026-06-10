@@ -17,6 +17,7 @@ import { PythonSandboxTool } from './sandbox.js';
 import { SemanticSearchTool } from './semantic.js';
 
 import { DelegateTaskTool } from './delegate.js';
+import { ALL as PENPOT_TOOLS } from './penpot.js';
 
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
@@ -39,6 +40,7 @@ export class ToolRegistry {
       new LinterTool(),
       new Z3VerifyTool(),
       new TypeCheckerTool(),
+      ...PENPOT_TOOLS,
     ];
     for (const tool of defaults) {
       this.tools.set(tool.name, tool);

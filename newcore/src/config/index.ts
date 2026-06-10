@@ -36,6 +36,10 @@ export const ConfigSchema = z.object({
   // Z3 Solver
   z3Enabled: z.boolean().default(true),
   z3TimeoutMs: z.number().default(5_000),
+
+  // Penpot integration
+  penpotBridgeUrl: z.string().default('http://localhost:9010'),
+  penpotMcpUrl: z.string().default('http://localhost:4401'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -93,6 +97,8 @@ export function loadConfig(overrides?: Partial<Config>): Config {
     maxFileSizeBytes: envVars.MAX_FILE_SIZE_BYTES ? parseInt(envVars.MAX_FILE_SIZE_BYTES, 10) : undefined,
     z3Enabled: parseEnvBool(envVars.Z3_ENABLED),
     z3TimeoutMs: envVars.Z3_TIMEOUT_MS ? parseInt(envVars.Z3_TIMEOUT_MS, 10) : undefined,
+    penpotBridgeUrl: envVars.PENPOT_BRIDGE_URL || undefined,
+    penpotMcpUrl: envVars.PENPOT_MCP_URL || undefined,
     ...overrides,
   };
 

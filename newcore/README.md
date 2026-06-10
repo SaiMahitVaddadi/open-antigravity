@@ -121,6 +121,19 @@ OpenGravity can be controlled programmatically by any frontend (like a VS Code e
 npm run cli serve
 ```
 
+## 🎨 Penpot tools
+
+Seven `penpot.*` tools let agents drive a live Penpot design and call the
+Penpot MCP server for batch / export ops. See
+[`src/tools/penpot.README.md`](src/tools/penpot.README.md) for the full
+reference. Required external services:
+
+- Antigravity Bridge plugin proxy on `:9010` (env `PENPOT_BRIDGE_URL`)
+- Penpot MCP server on `:4401` (env `PENPOT_MCP_URL`)
+
+Both are optional — tools cleanly return a failure result if either is
+unreachable.
+
 ## 🛡️ Security & Sandboxing
 
 The **Policy Engine** operates on a default-deny principle for destructive operations:

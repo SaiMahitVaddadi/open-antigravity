@@ -118,3 +118,23 @@ export async function startServer(orchestrator?: AgentOrchestrator) {
 
   return app;
 }
+
+// ── Auto-start when invoked directly (e.g. `npm run server` / `tsx src/server.ts`) ──
+// ESM equivalent of `require.main === module`.
+import { fileURLToPath } from 'url';
+import { argv } from 'process';
+
+const isDirectInvocation = (() => {
+  try {
+    return fileURLToPath(import.meta.url) === argv[1];
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectInvocation) {
+  startServer().catch((err) => {
+    console.error('Fatal: failed to start server:', err);
+    process.exit(1);
+  });
+}

@@ -9,3 +9,7 @@ data/
 *.log
 .DS_Store
 Thumbs.db
+
+# Antigravity Bridge: keep our source-tree artifacts module tracked
+!src/artifacts/
+!src/artifacts/*

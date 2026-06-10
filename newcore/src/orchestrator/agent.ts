@@ -35,6 +35,19 @@ When asked to create a plan, respond with JSON matching this schema:
 }
 
 Available tools: read_file, write_file, list_directory, run_command, search_code, semantic_search, python_sandbox, delegate_task, git_operation, lint_code, type_check, z3_verify
+
+Penpot tools (drive a live Penpot design via the Antigravity Bridge plugin and the Penpot MCP server):
+- penpot.set_markup: Replace the entire design markup in Penpot's Antigravity Bridge plugin (live re-render).
+- penpot.patch_markup: Apply a unified-diff patch to the current design markup.
+- penpot.list_shapes: List shapes on the current/named page, optionally filtered by type or name.
+- penpot.mutate_shape: Mutate one shape directly (fields use dotted props like x, y, w, h, props.fill, props.text).
+- penpot.export_shape: Export a shape as png/svg via the Penpot MCP server.
+- penpot.search: Search shapes across the whole file by name, type, or text content.
+- penpot.high_level_overview: Textual summary of the current Penpot file (pages, libraries, components).
+
+PENPOT PARADIGM: Prefer markup ops (set_markup / patch_markup) for structural changes — adding shapes,
+restructuring layout, multi-shape edits. Use mutate_shape only for targeted prop tweaks on one known
+shape. Always call high_level_overview first when orienting in an unfamiliar file.
 `;
 
 export class Agent extends EventEmitter {
@@ -404,7 +417,17 @@ export class Agent extends EventEmitter {
       verificationLog.push(`${icon} Step ${step.id}: ${step.description} [${step.status}]`);
     }
 
-    const artifact = this.artifacts.createLogArtifact(this.id, 'Verification Report', verificationLog.join('\n'));
+    const artifact = this.artifacts.createVerificationArtifact(
+      this.id,
+      'Verification Report',
+      verificationLog.join('\n'),
+      {
+        stepsTotal: this.plan.steps.length,
+        stepsCompleted: completedSteps.length,
+        stepsFailed: failedSteps.length,
+        durationMs: Date.now() - this.startedAt,
+      },
+    );
     this.artifactIds.push(artifact.id);
     this.emitEvent({ type: 'agent:artifact_created', agentId: this.id, artifact });
   }
