@@ -71,6 +71,16 @@ export async function startServer(orchestrator?: AgentOrchestrator) {
     return { ok: true };
   });
 
+  // Cancel — flips the agent's cancelled flag. Actual state transition to
+  // 'cancelled' happens at the next safe boundary inside the run loop.
+  // Returns { ok: false } if the agent is already in a terminal state.
+  app.post<{ Params: { id: string } }>('/agents/:id/cancel', async (req, reply) => {
+    const agent = engine.getAgent(req.params.id);
+    if (!agent) return reply.code(404).send({ ok: false, error: 'agent_not_found' });
+    const ok = agent.cancel();
+    return { ok, state: agent.getStatus().state };
+  });
+
   // HitL Endpoints
   app.post<{ Params: { id: string } }>('/agents/:id/approve', async (req, reply) => {
     const agent = engine.getAgent(req.params.id);

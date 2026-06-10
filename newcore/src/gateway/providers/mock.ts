@@ -35,6 +35,13 @@ export class MockProvider implements ModelProvider {
 
   async complete(request: CompletionRequest): Promise<CompletionResponse> {
     const start = Date.now();
+    // Test hook: artificially slow the mock provider so the run loop yields
+    // long enough for cancel / HitL flows to be exercised end-to-end. No-op
+    // when the env var is unset or non-positive.
+    const delayMs = Number(process.env.MOCK_DELAY_MS ?? 0);
+    if (delayMs > 0) {
+      await new Promise(r => setTimeout(r, delayMs));
+    }
     const lastUserMsg = [...request.messages].reverse().find(m => m.role === 'user');
     const userContent = lastUserMsg?.content ?? '';
 

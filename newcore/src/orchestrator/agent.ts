@@ -52,6 +52,15 @@ shape. Always call high_level_overview first when orienting in an unfamiliar fil
 When the task mentions Penpot or design, prefer the penpot.* tools over generic file tools.
 `;
 
+// Sentinel thrown when the agent has been cancelled. Caught in `run()` so we
+// transition to the `cancelled` terminal state cleanly (not `failed`).
+class CancelledError extends Error {
+  constructor() {
+    super('Agent cancelled');
+    this.name = 'CancelledError';
+  }
+}
+
 export class Agent extends EventEmitter {
   readonly id: string;
   readonly config: AgentConfig;
@@ -62,9 +71,13 @@ export class Agent extends EventEmitter {
   private artifactIds: string[] = [];
   private startedAt = 0;
   private updatedAt = 0;
-  
+
   // HitL Control
   private resumeResolver: ((value: boolean) => void) | null = null;
+
+  // Cancellation flag — checked at safe boundaries (between steps and before
+  // LLM calls). Setting it via cancel() also rejects any pending HitL prompt.
+  private cancelled = false;
 
   constructor(
     config: AgentConfig,
@@ -169,6 +182,31 @@ export class Agent extends EventEmitter {
     }
   }
 
+  /**
+   * Request cancellation. Returns false if already in a terminal state.
+   * The actual state transition happens at the next safe boundary inside
+   * run() / executeSteps() — this method only flips the flag and unblocks
+   * any pending HitL prompt.
+   */
+  cancel(): boolean {
+    if (this.state === 'completed' || this.state === 'failed' || this.state === 'cancelled') {
+      return false; // already terminal
+    }
+    this.cancelled = true;
+    // If we're paused on a HitL prompt, resolve the resumeResolver as rejected
+    // so the awaiting step sees `approved = false` and the run loop continues
+    // to the next cancellation check.
+    if (this.resumeResolver) {
+      this.resumeResolver(false);
+      this.resumeResolver = null;
+    }
+    return true;
+  }
+
+  private checkCancelled(): void {
+    if (this.cancelled) throw new CancelledError();
+  }
+
   async run(): Promise<AgentStatus> {
     if (this.startedAt === 0) {
       this.startedAt = Date.now();
@@ -177,6 +215,7 @@ export class Agent extends EventEmitter {
     this.audit.log({ agentId: this.id, action: 'agent:start', target: this.config.task, result: 'success', details: '', durationMs: 0 });
 
     try {
+      this.checkCancelled();
       if (this.state === 'idle' || this.state === 'planning') {
         await this.setState('planning');
         if (!this.plan) {
@@ -188,11 +227,13 @@ export class Agent extends EventEmitter {
         }
       }
 
+      this.checkCancelled();
       if (this.state === 'planning' || this.state === 'executing' || this.state === 'waiting_feedback') {
         await this.setState('executing');
         await this.executeSteps();
       }
 
+      this.checkCancelled();
       if (this.state === 'executing' || this.state === 'verifying') {
         await this.setState('verifying');
         await this.verify();
@@ -202,24 +243,38 @@ export class Agent extends EventEmitter {
       this.audit.log({ agentId: this.id, action: 'agent:complete', target: this.config.task, result: 'success', details: `${this.plan?.steps.length ?? 0} steps completed`, durationMs: Date.now() - this.startedAt });
 
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      await this.setState('failed');
-      this.emitEvent({ type: 'agent:error', agentId: this.id, error });
-      this.audit.log({ agentId: this.id, action: 'agent:error', target: this.config.task, result: 'failure', details: error, durationMs: Date.now() - this.startedAt });
+      if (err instanceof CancelledError) {
+        await this.setState('cancelled');
+        const atStep = this.currentStep;
+        this.emitEvent({ type: 'agent:cancelled', agentId: this.id, atStep });
+        this.artifacts.createLogArtifact(
+          this.id,
+          'Agent cancelled',
+          `Agent ${this.id} was cancelled by request at step ${atStep}.`,
+        );
+        this.audit.log({ agentId: this.id, action: 'agent:cancel', target: this.config.task, result: 'success', details: `cancelled at step ${atStep}`, durationMs: Date.now() - this.startedAt });
+      } else {
+        const error = err instanceof Error ? err.message : String(err);
+        await this.setState('failed');
+        this.emitEvent({ type: 'agent:error', agentId: this.id, error });
+        this.audit.log({ agentId: this.id, action: 'agent:error', target: this.config.task, result: 'failure', details: error, durationMs: Date.now() - this.startedAt });
+      }
     }
 
     return this.getStatus();
   }
 
   private async createPlan(): Promise<ExecutionPlan> {
+    this.checkCancelled();
     this.messages.push({ role: 'user', content: `Create a detailed execution plan for this task:\n\n${this.config.task}\n\nRespond with a JSON execution plan.` });
 
     const response = await this.gateway.complete({
       model: this.config.model,
       messages: this.messages,
-      temperature: 0.3, 
+      temperature: 0.3,
       maxTokens: 4096,
     });
+    this.checkCancelled();
 
     this.messages.push({ role: 'assistant', content: response.content });
     this.emitEvent({ type: 'gateway:response', model: response.model, latencyMs: response.latencyMs });
@@ -269,6 +324,7 @@ export class Agent extends EventEmitter {
     };
 
     for (let i = this.currentStep; i < this.plan.steps.length; i++) {
+      this.checkCancelled();
       const step = this.plan.steps[i];
       this.currentStep = i;
       await this.persist();
@@ -336,6 +392,7 @@ export class Agent extends EventEmitter {
   }
 
   private async executeLLMStep(step: PlanStep, toolContext: ToolContext): Promise<ToolResult> {
+    this.checkCancelled();
     this.messages.push({
       role: 'user',
       content: `Execute step ${step.id}: ${step.description}\n\nUse one of the available tools to accomplish this.`,
@@ -350,6 +407,7 @@ export class Agent extends EventEmitter {
       temperature: 0.2,
       maxTokens: 4096,
     });
+    this.checkCancelled();
 
     this.messages.push({ role: 'assistant', content: response.content, toolCalls: response.toolCalls });
 
@@ -374,6 +432,7 @@ export class Agent extends EventEmitter {
   }
 
   private async retryStep(step: PlanStep, failedResult: ToolResult, toolContext: ToolContext): Promise<ToolResult | null> {
+    this.checkCancelled();
     this.messages.push({
       role: 'user',
       content: `Step ${step.id} failed with error: ${failedResult.error}\n\nPlease fix the issue and try again.`,
@@ -387,6 +446,7 @@ export class Agent extends EventEmitter {
       temperature: 0.2,
       maxTokens: 4096,
     });
+    this.checkCancelled();
 
     this.messages.push({ role: 'assistant', content: response.content, toolCalls: response.toolCalls });
 

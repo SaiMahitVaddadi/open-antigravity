@@ -252,5 +252,6 @@ export type EngineEvent =
   | { type: 'agent:artifact_created'; agentId: string; artifact: ArtifactData }
   | { type: 'agent:error'; agentId: string; error: string }
   | { type: 'agent:completed'; agentId: string; summary: string }
+  | { type: 'agent:cancelled'; agentId: string; atStep: number }
   | { type: 'gateway:request'; model: string; tokens: number }
   | { type: 'gateway:response'; model: string; latencyMs: number };
